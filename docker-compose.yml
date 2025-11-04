@@ -1,0 +1,59 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: movie-rec-system-db
+    environment:
+      POSTGRES_DB: moviesdb
+      POSTGRES_USER: movies
+      POSTGRES_PASSWORD: moviespw
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movies -d moviesdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: movie-rec-system-api
+    container_name: movie-rec-system-api
+    depends_on:
+      db:
+        condition: service_healthy
+      recommender:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/moviesdb
+      SPRING_DATASOURCE_USERNAME: movies
+      SPRING_DATASOURCE_PASSWORD: moviespw
+      # points API to recommender by service name (NOT localhost)
+      RECOMMENDER_BASE_URL: http://recommender:8000
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  recommender:
+    build:
+      context: ./recommender
+      dockerfile: Dockerfile
+    image: movie-rec-system-recommender
+    container_name: movie-rec-system-recommender
+    environment:
+      API_BASE_URL: http://api:8080
+    ports:
+      - "8000:8000"
+    healthcheck:
+      # curl is available in this image (we install it in Dockerfile)
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
